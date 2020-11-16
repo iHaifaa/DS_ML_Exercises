@@ -1,0 +1,231 @@
+---
+title: "Modeling_Process"
+output: html_notebook
+---
+
+```{r}
+# Helper packages
+library(dplyr)     # for data manipulation
+library(ggplot2)   # for awesome graphics
+library(pdp)       # for boston dataset
+library(corrplot)  # for correlation plot
+
+# Modeling process packages
+library(rsample)   # for resampling procedures
+library(caret)     # for resampling and model training
+#library(h2o)       # for resampling and model training
+
+# Results
+library(Metrics) 
+
+```
+
+*Q1* Load the Boston housing data set from the pdp package. These data come from a classic paper that analyzed the relationship between several characteristics (e.g., crime rate, average rooms per dwelling, property tax value) and the median value of homes within a census tract (cmedv). See ?pdp::boston for details and further references.
+
+- What are the dimensions of this data set?
+
+```{r}
+pdp::boston
+#boston <- data(BostonHousing)
+
+#The dimensions
+glimpse(boston)
+dim(boston)
+
+# Transform chas into int
+boston$chas <- as.numeric(boston$chas)
+```
+
+- Perform some exploratory data analysis on this data set (be sure to assess the distribution of the target variable cmedv).
+
+```{r}
+#EDA
+
+#The distribution of the target variable cmedv
+ggplot(boston, aes(x=cmedv)) +
+ geom_histogram(aes(y=..density..),      # Histogram with density instead of count on y-axis
+                binwidth=.5,
+                colour="black", fill="white") +
+ geom_density(alpha=.2, fill="#FFF666")  # Overlay with transparent density plot
+```
+
+```{r}
+# Correlation matrix
+correlation <-cor(boston)
+corrplot(correlation, method="color")
+```
+
+*Q2* Split the Boston housing data into a training set and test set using a 70-30% split.
+
+- How many observations are in the training set and test set?
+
+```{r}
+# Splitting into trian/test using 70-30% ratio
+set.seed(123) # for reproducibility
+split <- initial_split(boston, strata = "cmedv", prop = 0.7)
+train <- training(split)
+test  <- testing(split)
+
+dim(train)[1] # 356
+dim(test)[1] # 150
+```
+
+- Compare the distribution of cmedv between the training set and test set.
+
+```{r}
+# The distributions of cmedv in train and test
+ggplot(train, aes(x = cmedv)) +
+ geom_line(stat = "density",
+           trim = TRUE) +
+ geom_line(data = test,
+           stat = "density",
+           trim = TRUE, col = "red")
+```
+*Q3* Using the Boston housing training data created in 2), fit a linear regression model that use all available features to predict cmedv.
+
+- Create a model with lm(), glm(), and caret::train().
+- How do the coefficients compare across these models?
+- How does the MSE/RMSE compare across these models?
+
+```{r}
+# direct engine: Linear Model
+
+direct_lm <-
+        lm(cmedv ~ ., data = boston)
+
+#direct_lm # just display coefficients
+coefficients(direct_lm) # just display coefficients
+
+summary(direct_lm)
+
+# Residual sum of squares 
+RSS <- c(crossprod(direct_lm$residuals))
+RSS
+
+# Mean of squared error
+MSE <- RSS / length(direct_lm$residuals)
+MSE
+anova(direct_lm) # getting different results
+
+# Root of MSE
+RMSE <- sqrt(MSE)
+RMSE
+
+#rmse(boston_train$cmedv,predict(model1,boston_train))
+#mse(boston_train$cmedv,predict(model1,boston_train))
+```
+
+
+```{r}
+# direct engine: G Linear Model
+direct_glm <-
+        glm(cmedv ~ ., data = boston, family = "gaussian")
+
+summary(direct_glm)
+
+direct_glm
+
+# Residual sum of squares 
+RSS2 <- c(crossprod(direct_glm$residuals))
+
+# Mean of squared error
+MSE2 <- RSS2 / length(direct_glm$residuals)
+#anova(direct_lm) # getting different results
+
+# Root of MSE
+RMSE2 <- sqrt(MSE2)
+```
+
+```{r}
+#meta engine: Linear Model
+metaModel <-
+        caret::train(cmedv ~ ., data = boston, method = "lm")
+
+# OR
+#lm_caret <- train(cmedv ~ ., data = boston, method = "lm")
+#lm_caret
+
+coef(metaModel$finalModel)
+
+metaModel
+
+RMSE3 <- mean(metaModel$resample$RMSE)
+MSE3 <- sqrt(RMSE3)
+```
+
+*Q5* Using the Boston housing training data created in exercise 2), perform a 10-fold cross-validated linear regression model, repeated 5 times, that uses all available features to predict cmedv.
+
+```{r}
+#10-fold cross-validated linear regression model
+cv <- trainControl(
+ method = "repeatedcv",
+ number = 10,
+ repeats = 5
+)
+```
+
+- What is the average RMSE across all 50 model iterations?
+
+```{r}
+lm_fit <- train(
+ cmedv ~ .,
+ data = train,
+ method = "lm",
+ trControl = cv,
+ metric = "RMSE"
+)
+
+# print model results
+lm_fit
+```
+
+- Plot the distribution of the RMSE across all 50 model iterations.
+- Describe the results.
+
+```{r}
+lm_fit$resample
+# # plot cross validation results
+ggplot(lm_fit$resample, aes(RMSE)) +
+ geom_histogram()
+```
+
+*Q6* Repeat exercise 5) on the Boston housing data; however, instead of a linear regression model, use a k-nearest neighbor model that executes a hyperparameter grid search where k ranges from 2–20. How does this model’s results compare to the linear regression results?
+
+```{r}
+# 1. stratified sampling with the rsample package
+set.seed(123)
+split  <- initial_split(boston, prop = 0.7, strata = "cmedv")
+boston_train  <- training(split)
+boston_test   <- testing(split)
+
+# 2. create a resampling method
+cv2 <- trainControl(
+  method = "repeatedcv", 
+  number = 10, 
+  repeats = 5
+  )
+
+# 3. create a hyperparameter grid search
+hyper_grid <- expand.grid(k = seq(2, 20, by = 2))
+
+# 4. execute grid search with knn model
+#    use RMSE as preferred metric
+knn_fit <- train(
+  cmedv ~ ., 
+  data = boston_train, 
+  method = "knn", 
+  trControl = cv, 
+  tuneGrid = hyper_grid,
+  metric = "RMSE"
+  )
+
+# 5. evaluate results
+# print model results
+knn_fit
+
+# plot cross validation results
+ggplot(knn_fit$results, aes(k, RMSE)) + 
+  geom_line() +
+  geom_point() +
+  scale_y_continuous()
+```

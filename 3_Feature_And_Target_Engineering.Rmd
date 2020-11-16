@@ -1,0 +1,55 @@
+---
+title: "3_Feature_And_Target_Engineering"
+output: html_notebook
+---
+
+```{r}
+# Helper packages
+library(visdat)   # for additional visualizations
+
+# Feature engineering packages
+library(recipes)  # for feature engineering tasks
+```
+
+```{r}
+ames <- AmesHousing::make_ames()
+```
+
+*Q1* Rather than use a 70% stratified training split, try an 80% unstratified training split. How does your cross-validated results compare?
+
+```{r}
+# https://cran.r-project.org/web/packages/dataPreparation/vignettes/train_test_prep.html
+# https://rpubs.com/ID_Tech/S1
+
+set.seed(123)  # for reproducibility
+
+sample_size = floor(0.8*nrow(ames))
+
+# randomly split data in r
+picked = sample(seq_len(nrow(ames)),size = sample_size)
+#data(chickwts)
+train <- ames[picked,]
+test <- ames[-picked,]
+```
+
+*Q2* Rather than numerically encode the quality and condition features (i.e. step_integer(matches("Qual|Cond|QC|Qu"))), one-hot encode these features. What is the difference in the number of features your training set? 
+
+```{r}
+blueprint <- recipe(Sale_Price ~ ., data = train) %>%
+  step_nzv(all_nominal())  %>%
+  step_dummy(matches("Qual|Cond|QC|Qu"),  one_hot = TRUE) %>%
+  step_center(all_numeric(), -all_outcomes()) %>%
+  step_scale(all_numeric(), -all_outcomes()) %>%
+  step_pca(all_numeric(), -all_outcomes())
+blueprint
+```
+
+Apply the same cross-validated KNN model to this new feature set. How does the performance change? How does the training time change?
+```{r}
+prepare <- prep(blueprint, training = train)
+prepare
+
+```
+
+
+

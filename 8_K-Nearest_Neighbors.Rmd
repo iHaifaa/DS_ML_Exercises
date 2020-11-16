@@ -1,0 +1,112 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r knn-pkgs, message=FALSE}
+# Helper packages
+library(dplyr)      # for data wrangling
+library(ggplot2)    # for awesome graphics
+library(rsample)    # for creating validation splits
+library(recipes)    # for feature engineering
+
+library(ISLR)       # Dataset
+
+# Modeling packages
+library(caret)       # for fitting KNN models
+```
+
+Using the ISLR::Default dataset where the default variable is the response variable:
+
+*Q1* Apply a KNN model with all features. Use a grid search to assess values of k ranging from 2-200 that seeks to optimize the “ROC” metric.
+
+```{r}
+islr <- ISLR::Default
+islr
+
+# Create a hyperparameter grid search
+hyper_grid <- expand.grid(
+  k = floor(seq(2,200))
+)
+
+# Fit knn model and perform grid search
+knn_grid <- train(
+  data = islr, 
+  method = "knn", 
+  tuneGrid = hyper_grid,
+  metric = "ROC"
+)
+
+ggplot(knn_grid)
+
+```
+
+
+```{r}
+# Split
+set.seed(123)
+split <- initial_split(islr, prop = .7, strata = "default")
+train <- training(split)
+
+# Create blueprint
+blueprint <- recipe(default ~ ., data = train) %>%
+  step_nzv(all_nominal()) %>%
+  step_integer(matches("default|student")) %>%
+  step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>%
+  step_center(all_numeric(), -all_outcomes()) %>%
+  step_scale(all_numeric(), -all_outcomes())
+
+# Create a resampling method
+cv <- trainControl(
+  method = "repeatedcv", 
+  number = 10, 
+  repeats = 5,
+  classProbs = TRUE,                 
+  summaryFunction = twoClassSummary
+)
+
+# Create a hyperparameter grid search
+hyper_grid <- expand.grid(
+  k = floor(seq(1, nrow(train)/3, length.out = 20))
+)
+
+# Fit knn model and perform grid search
+knn_grid <- train(
+  blueprint, 
+  data = train, 
+  method = "knn", 
+  trControl = cv, 
+  tuneGrid = hyper_grid,
+  metric = "ROC"
+)
+
+```
+
+*Q2* Plot the grid search performance.
+
+```{r}
+ggplot(knn_grid)
+
+ggplot(hyper_grid)
+```
+
+*Q3* What value for K optimizes model performance? What does this tell you about your data?
+```{r}
+
+```
+
+*Q4* Plot the ROC curve for the optimal model.
+```{r}
+
+```
+
+*Q5* Which 10 features are considered most influential? Are these the same features that have been influential in previous models?
+```{r}
+
+```
+
+*Q6* Now perform questions 1-5 for the built in iris data where species is the response variable.
+```{r}
+
+```
+
